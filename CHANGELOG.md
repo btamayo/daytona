@@ -1,3 +1,15 @@
+## 1.2.2 - September 29, 2021
+
+- Enable VM Scaleset functionality for Azure Auth Method. (#81)
+
+## 1.2.1 - September 22, 2021
+
+- Set DAYTONA/<version> as the User-Agent instead of the default Go http UA. (#80)
+
+## 1.2.0 - August 31, 2021
+
+- Add Azure Auth method (#78)
+
 ## 1.1.6 - May 10, 2021
 
 - Address a defect with the parsing & handling of alt_names (#76)
