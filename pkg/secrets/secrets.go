@@ -92,18 +92,18 @@ func SecretFetcher(client *api.Client, config cfg.Config) {
 			def.secretID = strings.TrimPrefix(envKey, secretStoragePathPrefix)
 			def.paths = append(def.paths, apex)
 
-			log.Trace().Msgf("[1] Plural mode = false. envKey is: %s, secretStoragePathPrefix: %s. Trimming `envKey` from `secretStoragePathPrefix` to: %s", envKey, secretStoragePathPrefix, def.secretID)
+			log.Trace().Msgf("[1] Plural mode = %v. envKey is: %s, secretStoragePathPrefix: %s. Trimming `envKey` from `secretStoragePathPrefix` to: %s", def.plural, envKey, secretStoragePathPrefix, def.secretID)
 
 		case strings.HasPrefix(envKey, secretsStoragePathPrefix):
 			def.secretID = strings.TrimPrefix(envKey, secretsStoragePathPrefix)
 			def.plural = true
 
-			log.Trace().Msgf("[2] Plural mode = true. envKey is: %s, secretsStoragePathPrefix: %s. Trimming `envKey` from `secretsStoragePathPrefix` to: %s", envKey, secretsStoragePathPrefix, def.secretID)
+			log.Trace().Msgf("[2] Plural mode = %v. envKey is: %s, secretsStoragePathPrefix: %s. Trimming `envKey` from `secretsStoragePathPrefix` to: %s", def.plural, envKey, secretsStoragePathPrefix, def.secretID)
 
 		case strings.HasPrefix(envKey, secretDestinationPrefix):
 			dest_index := strings.TrimPrefix(envKey, secretDestinationPrefix)
 
-			log.Trace().Msgf("[3] Plural mode = false. apex is: %s, envKey is: %s, secretDestinationPrefix: %s. Trimming `envKey` from `secretDestinationPrefix` to get `dest_index`: %s", apex, envKey, secretDestinationPrefix, dest_index)
+			log.Trace().Msgf("[3] Plural mode = %v. apex is: %s, envKey is: %s, secretDestinationPrefix: %s. Trimming `envKey` from `secretDestinationPrefix` to get `dest_index`: %s", def.plural, apex, envKey, secretDestinationPrefix, dest_index)
 
 			destinations[dest_index] = apex
 			continue
@@ -148,10 +148,10 @@ func SecretFetcher(client *api.Client, config cfg.Config) {
 
 	// output the secret definitions
 	for i, def := range defs {
-		log.Debug().Msgf("Loading secret defs, processing def at defs[%d]", i)
+		log.Trace().Msgf("Loading secret defs, processing def at defs[%d]", i)
 
 		if config.SecretEnv {
-			log.Debug().Msgf("SecretEnv flag is true, running `setEnvSecrets`")
+			log.Trace().Msgf("SecretEnv flag is true, calling `setEnvSecrets`")
 			setEnvSecrets(def.secrets)
 		}
 
@@ -243,8 +243,6 @@ func writeJSONSecrets(secrets map[string]string, filepath string) error {
 }
 
 func setEnvSecrets(secrets map[string]string) error {
-	log.Debug().Msgf("setEnvSecrets")
-
 	for k, v := range secrets {
 		log.Trace().Msgf("  [Setting Env Var] key: %s", k)
 		err := os.Setenv(k, v)
