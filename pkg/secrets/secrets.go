@@ -75,6 +75,7 @@ func SecretFetcher(client *api.Client, config cfg.Config) {
 		// envKey=secretPath
 		pair := strings.Split(env, "=")
 		envKey := pair[0]
+
 		apex := os.Getenv(envKey)
 		if apex == "" {
 			continue
@@ -90,11 +91,21 @@ func SecretFetcher(client *api.Client, config cfg.Config) {
 		case strings.HasPrefix(envKey, secretStoragePathPrefix):
 			def.secretID = strings.TrimPrefix(envKey, secretStoragePathPrefix)
 			def.paths = append(def.paths, apex)
+
+			log.Trace().Msgf("[1] Plural mode = false. envKey is: %s, secretStoragePathPrefix: %s. Trimming `envKey` from `secretStoragePathPrefix` to: %s", envKey, secretStoragePathPrefix, def.secretID)
+
 		case strings.HasPrefix(envKey, secretsStoragePathPrefix):
 			def.secretID = strings.TrimPrefix(envKey, secretsStoragePathPrefix)
 			def.plural = true
+
+			log.Trace().Msgf("[2] Plural mode = true. envKey is: %s, secretsStoragePathPrefix: %s. Trimming `envKey` from `secretsStoragePathPrefix` to: %s", envKey, secretsStoragePathPrefix, def.secretID)
+
 		case strings.HasPrefix(envKey, secretDestinationPrefix):
-			destinations[strings.TrimPrefix(envKey, secretDestinationPrefix)] = apex
+			dest_index := strings.TrimPrefix(envKey, secretDestinationPrefix)
+
+			log.Trace().Msgf("[3] Plural mode = false. apex is: %s, envKey is: %s, secretDestinationPrefix: %s. Trimming `envKey` from `secretDestinationPrefix` to get `dest_index`: %s", apex, envKey, secretDestinationPrefix, dest_index)
+
+			destinations[dest_index] = apex
 			continue
 		default:
 			continue
@@ -111,10 +122,14 @@ func SecretFetcher(client *api.Client, config cfg.Config) {
 			def.outputDestination = dest
 		}
 
+		log.Trace().Msgf("def.outputDestination is: %s", def.outputDestination)
+
 		if def.plural {
+			log.Debug().Msgf("Plural mode: Starting client walk")
+
 			err := def.Walk(client)
 			if err != nil {
-				log.Fatal().Err(err).Msg("Could not iterate on the provided apex path")
+				log.Fatal().Err(err).Msg("Plural mode: Could not iterate on the provided apex path")
 			}
 		}
 
@@ -132,8 +147,11 @@ func SecretFetcher(client *api.Client, config cfg.Config) {
 	secretPayloadPathOutput := make(map[string]string)
 
 	// output the secret definitions
-	for _, def := range defs {
+	for i, def := range defs {
+		log.Debug().Msgf("Loading secret defs, processing def at defs[%d]", i)
+
 		if config.SecretEnv {
+			log.Debug().Msgf("SecretEnv flag is true, running `setEnvSecrets`")
 			setEnvSecrets(def.secrets)
 		}
 
@@ -142,7 +160,9 @@ func SecretFetcher(client *api.Client, config cfg.Config) {
 		}
 
 		if config.SecretPayloadPath != "" {
+			log.Trace().Msgf("config.secretPayloadPath: %s, setting secrets", config.SecretPayloadPath)
 			for k, v := range def.secrets {
+				log.Trace().Msgf("  setting for k: %s", k)
 				secretPayloadPathOutput[k] = v
 			}
 		}
@@ -169,15 +189,22 @@ func SecretFetcher(client *api.Client, config cfg.Config) {
 	// and configured destinations such as
 	//	DAYTONA_SECRET_DESTINATION_api_key
 	for destKey := range destinations {
+		log.Debug().Msgf("Start iterating over `destinations` for all secret defs")
+
 		for j := range defs {
+			log.Debug().Msgf(" Start iterating over def, index: %d", j)
 			if defs[j].outputDestination == "" {
 				secret, ok := defs[j].secrets[destKey]
+
 				if ok {
+					log.Debug().Msgf(" secret: %s   (defs[%d].secrets[%s])", secret, j, destKey)
 					err := writeFile(destinations[destKey], []byte(secret))
 					if err != nil {
 						log.Error().Err(err).Msgf("could not write secrets to file %s", destinations[destKey])
 						continue
 					}
+				} else {
+					log.Debug().Msgf(" secret does NOT EXIST   (defs[%d].secrets[%s])")
 				}
 			}
 		}
@@ -216,8 +243,12 @@ func writeJSONSecrets(secrets map[string]string, filepath string) error {
 }
 
 func setEnvSecrets(secrets map[string]string) error {
+	log.Debug().Msgf("setEnvSecrets")
+
 	for k, v := range secrets {
+		log.Trace().Msgf("  [Setting Env Var] key: %s", k)
 		err := os.Setenv(k, v)
+
 		if err != nil {
 			return fmt.Errorf("error from os.Setenv: %s", err)
 		}
@@ -252,6 +283,7 @@ func writeFile(path string, data []byte) error {
 func (sd *SecretDefinition) addSecrets(secretResult *SecretResult) error {
 	keyPath := secretResult.KeyPath
 	_, keyName := path.Split(keyPath)
+	log.Debug().Msgf("  keyName: %s, split from keyPath: %s", keyName, keyPath)
 	secret := secretResult.Secret
 
 	err := secretResult.Err
@@ -267,7 +299,9 @@ func (sd *SecretDefinition) addSecrets(secretResult *SecretResult) error {
 	}
 
 	singleValueKey := os.Getenv(secretValueKeyPrefix + sd.secretID)
+	log.Debug().Msgf("  singleValueKey %s (secretValueKeyPrefix: %s + sd.secretID: %s)", singleValueKey, secretValueKeyPrefix, sd.secretID)
 	if singleValueKey != "" && !sd.plural {
+		log.Trace().Msgf("  singleValueKey is not empty, and we are not in plural mode")
 		v, ok := secretData[singleValueKey]
 		if ok {
 			secretValue, err := valueConverter(v)
@@ -282,16 +316,41 @@ func (sd *SecretDefinition) addSecrets(secretResult *SecretResult) error {
 	}
 
 	for k, v := range secretData {
+		log.Trace().Msgf("  secretData k: %s", k)
 		secretValue, err := valueConverter(v)
 		if err != nil {
 			return fmt.Errorf("failed to convert %v: %w", k, err)
 		}
 		sd.Lock()
 		switch k {
+		// Key or field name being `value`, then place the name of the secret as the
+		// resulting name for daytona
 		case defaultKeyName:
+			log.Debug().Msgf("  keyName: %s, secretData[k: %s]", keyName, k)
 			sd.secrets[keyName] = secretValue
+
+		// Else, if it's not `value`, then create a prefix for it using the last
+		// string token. If the last string token is an empty string, don't create a
+		// prefix at all and just use the field name (key name) used in the the secret.
 		default:
-			expandedKeyName := fmt.Sprintf("%s_%s", keyName, k)
+			var expandedKeyName string
+			log.Trace().Msgf("k: %s, keyName: %s", k, keyName)
+
+			keyName = strings.TrimSpace(keyName)
+			k = strings.TrimSpace(k)
+
+			if keyName == "" {
+				log.Trace().Msgf("(`keyName` is empty, not prefixing keys with `<keyName>_`)")
+				log.Warn().Msgf("Single secret has multiple keys in Vault, but Daytona cannot create a prefix. Does the path value end with `/`?")
+
+				expandedKeyName = k
+				log.Trace().Msgf("  expandedKeyName: %s (from k: %s)", expandedKeyName, k)
+
+			} else {
+				expandedKeyName = fmt.Sprintf("%s_%s", keyName, k)
+				log.Trace().Msgf("  expandedKeyName: %s (from <keyName: %s>_<k: %s>)", expandedKeyName, keyName, k)
+			}
+
 			sd.secrets[expandedKeyName] = secretValue
 		}
 		sd.Unlock()
@@ -306,26 +365,27 @@ func (sd *SecretDefinition) Walk(client *api.Client) error {
 
 	list, err := client.Logical().List(sd.secretApex)
 	if err != nil {
-		return fmt.Errorf("there was a problem listing %s: %s", sd.secretApex, err)
+		return fmt.Errorf("Plural mode: there was a problem listing %s: %s", sd.secretApex, err)
 	}
 	if list == nil || len(list.Data) == 0 {
-		return fmt.Errorf("no secrets found under: %s", sd.secretApex)
+		return fmt.Errorf("Plural mode: no secrets found under: %s", sd.secretApex)
 	}
-	log.Info().Str("secretApex", sd.secretApex).Msg("Starting iteration")
+
+	log.Info().Str("secretApex", sd.secretApex).Msg("Plural mode: Starting iteration")
 	// list.Data is like: map[string]interface {}{"keys":[]interface {}{"API_KEY", "APPLICATION_KEY", "DB_PASS"}}
 	keys, ok := list.Data["keys"].([]interface{})
 	if !ok {
-		return fmt.Errorf("unexpected list.Data format: %#v", list.Data)
+		return fmt.Errorf("Plural mode: unexpected list.Data format: %#v", list.Data)
 	}
 	for _, k := range keys {
 		key, ok := k.(string)
 		if !ok {
-			return fmt.Errorf("non-string secret name: %#v", key)
+			return fmt.Errorf("Plural mode: non-string secret name: %#v", key)
 		}
 		if !strings.HasSuffix(key, "/") {
 			paths = append(paths, path.Join(sd.secretApex, key))
 		} else {
-			log.Info().Str("subpath", key).Str("secretApex", sd.secretApex).Msg("found subpath while walking - only top-level path iteration is supported at this time")
+			log.Info().Str("subpath", key).Str("secretApex", sd.secretApex).Msg("Plural mode: found subpath while walking - only top-level path iteration is supported at this time")
 		}
 	}
 	sd.paths = paths
