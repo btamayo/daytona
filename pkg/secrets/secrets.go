@@ -102,10 +102,10 @@ func SecretFetcher(client *api.Client, config cfg.Config) {
 
 		case strings.HasPrefix(envKey, secretDestinationPrefix):
 			dest_index := strings.TrimPrefix(envKey, secretDestinationPrefix)
+			destinations[dest_index] = apex
 
 			log.Trace().Msgf("[3] Plural mode = %v. apex is: %s, envKey is: %s, secretDestinationPrefix: %s. Trimming `envKey` from `secretDestinationPrefix` to get `dest_index`: %s", def.plural, apex, envKey, secretDestinationPrefix, dest_index)
 
-			destinations[dest_index] = apex
 			continue
 		default:
 			continue
@@ -151,7 +151,6 @@ func SecretFetcher(client *api.Client, config cfg.Config) {
 		log.Trace().Msgf("Loading secret defs, processing def at defs[%d]", i)
 
 		if config.SecretEnv {
-			log.Trace().Msgf("SecretEnv flag is true, calling `setEnvSecrets`")
 			setEnvSecrets(def.secrets)
 		}
 
@@ -189,22 +188,20 @@ func SecretFetcher(client *api.Client, config cfg.Config) {
 	// and configured destinations such as
 	//	DAYTONA_SECRET_DESTINATION_api_key
 	for destKey := range destinations {
-		log.Debug().Msgf("Start iterating over `destinations` for all secret defs")
+		log.Trace().Msgf("Start iterating over `destinations` for all secret defs")
 
 		for j := range defs {
-			log.Debug().Msgf(" Start iterating over def, index: %d", j)
+			log.Trace().Msgf(" Start iterating over def, index: %d", j)
 			if defs[j].outputDestination == "" {
 				secret, ok := defs[j].secrets[destKey]
 
 				if ok {
-					log.Debug().Msgf(" secret: %s   (defs[%d].secrets[%s])", secret, j, destKey)
+					log.Trace().Msgf(" secret: %s   (defs[%d].secrets[%s])", secret, j, destKey)
 					err := writeFile(destinations[destKey], []byte(secret))
 					if err != nil {
 						log.Error().Err(err).Msgf("could not write secrets to file %s", destinations[destKey])
 						continue
 					}
-				} else {
-					log.Debug().Msgf(" secret does NOT EXIST   (defs[%d].secrets[%s])")
 				}
 			}
 		}
@@ -281,7 +278,7 @@ func writeFile(path string, data []byte) error {
 func (sd *SecretDefinition) addSecrets(secretResult *SecretResult) error {
 	keyPath := secretResult.KeyPath
 	_, keyName := path.Split(keyPath)
-	log.Debug().Msgf("  keyName: %s, split from keyPath: %s", keyName, keyPath)
+	log.Trace().Msgf("  keyName: %s, split from keyPath: %s", keyName, keyPath)
 	secret := secretResult.Secret
 
 	err := secretResult.Err
@@ -297,7 +294,7 @@ func (sd *SecretDefinition) addSecrets(secretResult *SecretResult) error {
 	}
 
 	singleValueKey := os.Getenv(secretValueKeyPrefix + sd.secretID)
-	log.Debug().Msgf("  singleValueKey %s (secretValueKeyPrefix: %s + sd.secretID: %s)", singleValueKey, secretValueKeyPrefix, sd.secretID)
+	log.Trace().Msgf("  singleValueKey %s (secretValueKeyPrefix: %s + sd.secretID: %s)", singleValueKey, secretValueKeyPrefix, sd.secretID)
 	if singleValueKey != "" && !sd.plural {
 		log.Trace().Msgf("  singleValueKey is not empty, and we are not in plural mode")
 		v, ok := secretData[singleValueKey]
@@ -324,7 +321,7 @@ func (sd *SecretDefinition) addSecrets(secretResult *SecretResult) error {
 		// Key or field name being `value`, then place the name of the secret as the
 		// resulting name for daytona
 		case defaultKeyName:
-			log.Debug().Msgf("  keyName: %s, secretData[k: %s]", keyName, k)
+			log.Trace().Msgf("  keyName: %s, secretData[k: %s]", keyName, k)
 			sd.secrets[keyName] = secretValue
 
 		// Else, if it's not `value`, then create a prefix for it using the last
