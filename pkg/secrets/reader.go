@@ -86,7 +86,7 @@ func NewParallelReader(ctx context.Context, logicalClient LogicalClient, numWork
 // ReadPaths processes all of the paths for the provided
 // secret definition and updates `def.secrets`
 func (pr *ParallelReader) ReadPaths(def *SecretDefinition) error {
-	log.Debug().Msgf("ReadPaths, populating def.secrets")
+	log.Trace().Msgf("ReadPaths, populating def.secrets")
 	done := make(chan bool)
 	errChan := make(chan error)
 
